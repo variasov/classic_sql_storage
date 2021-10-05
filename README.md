@@ -1,36 +1,62 @@
-# Classic Aspects
+# Classic SQL Storage
 
-This package provides convenient utils for late decorating, based on idea of
-aspects-oriented programming. Part of project "Classic".
+This package provides contextual transactions processing for SQLAlchemy and 
+base for pattern "Repository".
+
+Part of project "Classic".
 
 Usage:
 
 ```python
-
-from classic.aspects import PointCut
-
-points = PointCut()
+from classic.sql_storage import TransactionContext
+from sqlalchemy import create_engine, text
 
 
-@points.join_point
-def add_numbers(left, right):
-    return left + right
+engine = create_engine('sqlite:///')
+
+transaction = TransactionContext(bind=engine)
 
 
-assert add_numbers(1, 2) == 3  # Returns 3
+# As context manager:
+with transaction:
+    transaction.current_session.execute(
+        text('SELECT 1')
+    )
 
 
-def some_decorator(fn):
+# As decorator:
+@transaction
+def some_work():
+    transaction.current_session.execute(
+        text('SELECT 1')
+    )
+
+
+# Propagation:
+@transaction
+def complex_function():
+    """Doing complex work with db.
+    Session will be commited only after finish of complex_function call.
+    TransactionContext will count all calls, and will commit or rollback session
+    only in last call.
+    """
+    some_work()
+    some_work()
+    some_work()
     
-    def wrapper(*args, **kwargs):
-        print('Function called!')
-        return fn(*args, **kwargs)
-    
-    return wrapper
+    with transaction:
+        transaction.current_session.execute(
+            text('SELECT 1')
+        )
 
 
-add_numbers.join(some_decorator)
+# Automatic rollback
+@transaction
+def function_with_error():
+    """Changes, made by some_work, will be cancelled after raising error"""
+    some_work()
+    raise ValueError()
 
-assert add_numbers(1, 2) == 3  # Returns 3 and print "Function called!"
+
 ```
 
